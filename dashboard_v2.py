@@ -434,6 +434,7 @@ experiment = html.Div(
 )
 
 app = dash.Dash(external_stylesheets=[dbc.themes.LITERA])
+server=app.server
 
 app.layout = dbc.Container(
     [
