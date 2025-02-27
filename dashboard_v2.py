@@ -989,6 +989,6 @@ def style_selected_rows(sel_rows, k):
     # return f"validity: {score_validity}, sparsity: {score_sparsity}, feasibility: {score_feasibility}, proximity: {score_proximity} ",  {"scatter": radar, "all": fig}
     return f" ",  {"scatter": plots, "all": fig, "diffs": diffs}
 
-if __name__ == "__main__":
-    app.run_server(debug = "True", host="0.0.0.0")
+# if __name__ == "__main__":
+#     app.run_server(debug = "True", host="0.0.0.0")
 
