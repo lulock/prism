@@ -18,8 +18,6 @@ from metrics import *
 from random import randrange
 import math 
 
-
-
 dataset = helpers.load_adult_income_dataset()
 # description of transformed features
 adult_info = helpers.get_adult_data_info()
@@ -433,185 +431,6 @@ experiment = html.Div(
 
 )
 
-app = dash.Dash(external_stylesheets=[dbc.themes.LITERA])
-server=app.server
-
-app.layout = dbc.Container(
-    [
-        html.H1("💎 PRISM: ADULT Dataset"),
-        html.Br(),
-        
-        # dcc.Markdown(EXPLAINER),
-        dropdown,
-        html.Br(),
-        dbc.Tabs(
-            [
-                dbc.Tab(table, label="CF Evaluation: Single CF", tab_id="scatter"),
-                dbc.Tab(experiment, label="CF Evaluation: Average as k Increases", tab_id="all"),
-            ],
-            id="tabs",
-            active_tab="scatter",
-        ),
-        
-        # we wrap the store and tab content with a spinner so that when the
-        # data is being regenerated the spinner shows. delay_show means we
-        # don't see the spinner flicker when switching tabs
-        dbc.Spinner(
-            [
-                dcc.Store(id="store"),
-                html.Div(id="tab-content", className="p-4"),
-            ],
-            delay_show=100,
-        ),
-    ]
-)
-
-@app.callback(
-    Output("tab-content", "children"),
-    [Input("tabs", "active_tab"), Input("store", "data")],
-)
-def render_tab_content(active_tab, data):
-    """
-    This callback takes the 'active_tab' property as input, as well as the
-    stored graphs, and renders the tab content depending on what the value of
-    'active_tab' is.
-    """
-
-    print(data)
-    global fig, radar
-    if active_tab is not None:
-        if active_tab == "scatter":
-            return dcc.Graph(figure=radar)
-        elif active_tab == "all":
-            return dcc.Graph(figure=fig)
-            
-    return "No counterfactual example selected"
-    
-
-@app.callback(
-    [Output("example-output", "children"), 
-     Output("store", "data")],
-    [Input("submit-button", "n_clicks")], 
-    State("shorthand-checklist", "value"),
-    running=[
-        (Output("submit-button", "disabled"), True, False),
-    ],
-    prevent_initial_call=True,
-)
-def on_button_click(n, selections):
-    global results, fig
-    if n is None:
-        print(selections)
-        return "Not clicked."
-    else:
-        print(selections)
-        # experiment_run()
-        results = pd.DataFrame({}, columns=fields)
-        actionable_features = query.columns.values[selections]
-        # for i in list(range(len(config['prox']))):
-        for j in list(range(1,11)):
-
-            results = experiment_run(model_info, numruns, query, target, j, actionable_features, results)
-            
-        # fig = plot_results(results[1::2])
-
-
-        # save figures in a dictionary for sending to the dcc.Store
-
-        return f"Clicked {n} times for selection {actionable_features}.", {"scatter": fig, "all": fig}
-
-
-@app.callback(
-    [Output("pagination-contents", "children"),
-    Output("counterfactual-df", "data"),
-    Output("counterfactual-df", "selected_rows"),
-    ],
-    [Input("pagination", "active_page")],
-)
-def change_page(page):
-    global results
-    df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == 1]["counterfactuals"].values[0])), columns=query.columns.values)
-    data = df.to_dict('records')
-    if page:
-        df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == page]["counterfactuals"].values[0])), columns=query.columns.values)
-        print(df)
-        data = df.to_dict('records')
-        return f"k selected: {page}", data, []
-    return "Select a value for k", data, []
-
-@app.callback(
-    [
-        Output("selected-example", "children"), 
-        Output("store", "data", allow_duplicate=True),
-
-     ],
-    Input("counterfactual-df", "selected_rows"),
-    State("pagination", "active_page"),
-    prevent_initial_call=True,
-)
-def style_selected_rows(sel_rows, k):
-    global results, query, model_info, radar, fig
-
-    eor_results = results[1::2]
-    if len(sel_rows)==0:                                                                                                                                                                                                                      
-        return dash.no_update
-  
-    print(k)
-    print(sel_rows)
-    selected_cf = eor_results.loc[eor_results['k'] == k]
-    selected_cf['counterfactuals'].values[0][sel_rows[0]]
-
-    selected_cf = eor_results.loc[eor_results['k'] == k]
-    cf_as_array = selected_cf['counterfactuals'].values[0][sel_rows[0]]
-    cf_as_array = np.expand_dims(cf_as_array, axis=0)
-    cf_as_df = pd.DataFrame(cf_as_array, columns=query.columns)
-
-    # calculate scores
-    cf_output = model_info['model'].predict(cf_as_df)
-    opp = 1.0 - model_info['model'].predict(query)
-    score_validity = val(cf_output, opp, 1)
-
-    score_feasibility = impl(
-        query, 
-        cf_as_df, 
-        model_info["training_data"], 
-        model_info["scaler"], 
-        model_info["dist_function"],
-        model_info["mad"],
-        cont= query.select_dtypes(include='number').columns,
-        cat = query.select_dtypes(include='object').columns
-        )
-                    
-    score_actionability = act(
-        query.values, 
-        cf_as_array, 
-        model_info["actionable_features_np"]
-        )
-    
-    score_proximity = prox(
-        query, 
-        cf_as_df,  
-        model_info["scaler"],  
-        model_info["dist_function"],
-        model_info["mad"],
-        cont= query.select_dtypes(include='number').columns,
-        cat = query.select_dtypes(include='object').columns
-        )
-
-    score_sparsity = spar(
-        query.values, 
-        cf_as_array, 
-        dp=1
-        )
-
-    score_diversity = div_count(cf_as_array)
-    radar = plot_radar([score_sparsity, score_feasibility, score_validity, score_proximity], 1)
-    
-    # return f"validity: {score_validity}, sparsity: {score_sparsity}, feasibility: {score_feasibility}, proximity: {score_proximity} ",  {"scatter": radar, "all": fig}
-    return f" ",  {"scatter": radar, "all": fig}
-
-
-
 def feature_diff(query, cf, cols):
     return cols[~np.equal(query, cf
     )[0]].values
@@ -793,7 +612,7 @@ sidebar = html.Div(
 content = html.Div(id="page-content", style=CONTENT_STYLE)
 
 app.layout = html.Div([dcc.Location(id="url"), sidebar, content])
-
+server = app.server
 
 @app.callback(Output("page-content", "children"), [Input("url", "pathname")])
 def render_page_content(pathname):
