@@ -6,36 +6,28 @@ from dice_ml.utils import helpers  # helper functions from DiCE ML to import pre
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 import random
-import numpy as np
-from scipy.spatial import distance
-import csv
-import pandas as pd 
 from metrics import *
 from random import randrange
 import math 
 
+import dash
+from dash import html, dcc, Output, Input, dash_table, State
+import plotly.express as px
+import dash_bootstrap_components as dbc
+import plotly.express as px
+
+
+import math
+
+# load income dataset from dice_ml helpers
 dataset = helpers.load_adult_income_dataset()
 # description of transformed features
 adult_info = helpers.get_adult_data_info()
-adult_info
-
-
 dataset.rename(columns={"gender": "sex"}, inplace=True)
-
-
-
-dataset.describe(include='all')
-
- 
-# We can have a look at what the balance of classes is immediately
-
-
-np.sum(dataset['income'] == 1) / dataset.shape[0]
-
 
 # Random Seed at file level
 random_seed = 42
@@ -76,8 +68,6 @@ def prepare_pipeline(numerical, categorical, continuous_scaler = None):
     
     return clf
 
-
-
 # prepare data:
 target_name = "income"
 train_dataset, test_dataset, x_train, y_train, x_test, y_test = prepare_data(
@@ -102,10 +92,6 @@ m = dice_ml.Model(model=model, backend="sklearn")
 
 # Use method=random for generating CFs, may try genetic method as well later
 exp = dice_ml.Dice(d, m, method="random")
-# exp_genetic = dice_ml.Dice(d, m, method="genetic")
-# exp_KD = dice_ml.Dice(d, m, method="kdtree")
-
-
 
 # choose a query
 query_index = 0
@@ -144,33 +130,31 @@ results = pd.DataFrame({}, columns=fields)
 # For each configuration, run twice for the sake of measuring stability. 
 numruns = 2
 
-
-
 cont_features = query.select_dtypes(include='number').columns
 
 def experiment_run (model_info, numruns, query, target_range, k, actionable_features, results, exp_model=exp):
-      print("query is",query)
+      # print("query is",query)
       cf_stab_list = []
 
       opp = 1.0 - clf.predict(query)[0]
-      print("opp is ", opp)
+      # print("opp is ", opp)
 
       if target_range == 'opposite':
             for num in list(range(numruns)):
-                  print(f'on run {num}')
+                  # print(f'on run {num}')
                   cf_stab = exp_model.generate_counterfactuals(query, total_CFs=k, desired_class=target_range)
 
-                  print("cfs returns ",cf_stab)
+                  # print("cfs returns ",cf_stab)
 
 
                   cf_stab.visualize_as_dataframe(show_only_changes=True,display_sparse_df=False)
-                  # print(cf_stab)
+                  # # print(cf_stab)
                   cf_as_df =  cf_stab.cf_examples_list[0].final_cfs_df.reset_index()
                   cf_preds = cf_stab.cf_examples_list[0].final_cfs_df.values[:,-1]
                   cf_as_array = cf_stab.cf_examples_list[0].final_cfs_df.values[:,:-1]
 
-                  # print('array', cf_as_array)
-                  # print('df', cf_as_df)
+                  # # print('array', cf_as_array)
+                  # # print('df', cf_as_df)
                   
                   # append to list for stability calculation
                   cf_stab_list.append(cf_as_array)
@@ -212,14 +196,6 @@ def experiment_run (model_info, numruns, query, target_range, k, actionable_feat
                         )
 
                   score_diversity = div_count(cf_as_array)
-
-                  # Print all scores ! 
-                  print(f'Sparsity score is {score_sparsity}')
-                  print(f'Diversity (count) score is {score_diversity}')
-                  print(f'Implausibility score is {score_feasibility}')
-                  print(f'Actionability score is {score_actionability}')
-                  print(f'Proximity score is {score_proximity}')
-                  print(f'Validity score is {score_validity}')
                   
                   # log all scores in results dataframe
                   results.loc[len(results)] = [
@@ -242,40 +218,19 @@ def experiment_run (model_info, numruns, query, target_range, k, actionable_feat
 
       score_stability = stab(cf_stab_list[0], cf_stab_list[1])
       
-      print(f'Stability score is {score_stability}')
-
       # update stability score on every second example!
       results.at[len(results)-1, 'stability'] = score_stability
 
       return results
-
-
-
 
 # choose a query
 query_index = 21
 query = x_test.iloc[[query_index]]
 # run experiment RANDOM for k = 1 up to 5
 results=pd.DataFrame({}, columns=fields)
+
 for k in list(range(1,5)):
-      results = experiment_run(model_info, numruns, query, target, k, actionable_features, results=results)
-
-
-
-# !pip install dash-bootstrap-components
-
-
-from dash import Dash, html, dcc, callback, Output, Input, dash_table
-import plotly.express as px
-import pandas as pd
-import dash_bootstrap_components as dbc
-from dash import no_update
-from plotly import graph_objs as go
-
-
-import plotly.express as px
-import pandas as pd
-
+    results = experiment_run(model_info, numruns, query, target, k, actionable_features, results=results)
 
 def plot_radar(x, num_cf):
     df = pd.DataFrame(dict(
@@ -289,8 +244,6 @@ def plot_radar(x, num_cf):
     return fig
 
 fig = plot_radar([0.5, 0.5, 1.0, 0.8], 1)
-fig.show()
-
 
 def choose_query(query_index = 0):
     # choose a query
@@ -305,149 +258,24 @@ def choose_query(query_index = 0):
 
 query_index, query, results = choose_query(0)
 
-
 def feature_diff(query, cf, cols):
     return cols[~np.equal(query, cf)[0]].values
-
-
-query
-
-
-df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == 1]["counterfactuals"].values[0])), columns=query.columns.values)
-df["outcome"] = np.array((results[1::2].loc[results['k'] == 1]["preds"].values[0]))
-df["id"] = df.index
-print(df)
-
-
-
-import time
-
-import dash
-import dash_bootstrap_components as dbc
-import numpy as np
-import plotly.graph_objs as go
-from dash import Input, Output, dcc, html, State
 
 query = query
 numruns = 2
 opp = 1.0 - model_info['model'].predict(query)
 
-EXPLAINER = """This example shows how to use callbacks to render graphs inside
-tab content to ensure that they are sized correctly when switching tabs. It
-also demonstrates use of a `dcc.Store` component to cache graph data so that
-if the data generating process is expensive, switching tabs is still quick."""
-pagination = html.Div(
-    dbc.Pagination(max_value=10),
-)
-
 # fig = plot_results(results[1::2])
 radar = plot_radar([0,0,0,0], 1)
-
-dropdown = html.Div([
-    dcc.Dropdown([
-        {'label': 'CALIFORNIA', 'value': 'CAL', 'disabled': True},
-        {'label': 'ADULT', 'value': 'ADULT'},
-        ], 'ADULT', id='demo-dropdown'),
-    html.Div(id='dd-output-container')
-])
-
-button = html.Div(
-    [
-        
-        dbc.Row(
-            [
-                dbc.Col(html.Div(
-                        [
-        dbc.Checklist(
-            [
-                {"label": colname, "value": i} for i, colname in enumerate(query.columns.values)
-            ],
-            value=[0,1,2,3,4,5,6,7],
-            inline=True,
-            id="shorthand-checklist",
-        ),
-    ],
-    className="py-2")),
-                dbc.Col(html.Div(
-    [
-        dbc.Button(
-            "Submit", id="submit-button", className="me-2", n_clicks=0
-        ),
-        html.Span(id="example-output", style={"verticalAlign": "middle"}),
-    ]
-), width=3),
-            ]
-        ),
-    ]
-)
 
 df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == 1]["counterfactuals"].values[0])), columns=query.columns.values)
 df["outcome"] = np.array((results[1::2].loc[results['k'] == 1]["preds"].values[0]))
 df["id"] = df.index
-print(df)
-
-
-table = html.Div(
-    [
-            
-            # dbc.Table.from_dataframe(query.round(1), striped=True, bordered=True, hover=True),
-            dbc.Col(html.Div([
-            dbc.Row(
-                dbc.Col(html.Div([
-                    html.H3("Query Instance"),
-                    dash_table.DataTable(
-                data=query.to_dict('records'),
-                columns=[{"name": i, "id": i} for i in query.columns if i != "id"],
-                id='query')]), width="auto"),
-                # justify='end'
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(html.Div([html.Div("Select a value for k", id="pagination-contents"),
-                    dbc.Pagination(id ="pagination", max_value=10, active_page=1),
-                    html.H3("Counterfactual Instances"),
-                    # dbc.Table.from_dataframe(query, striped=True, bordered=True, hover=True, id = "counterfactual-df"),
-                    html.Div([dash_table.DataTable(
-                        row_selectable="single",
-                        data=df.to_dict('records'),
-                        columns=[{"name": i, "id": i} for i in df.columns if i != "id"],
-                        id='counterfactual-df')]),
-                    html.Span("select an example", id="selected-example", style={"verticalAlign": "middle"}),]), width="auto"),
-                ],
-                # justify='stasrt'
-            ),
-            ])),
-            
-            
-           
-    ]
-        )
-
-experiment = html.Div(
-    [
-     html.H3("Select Actionable Features"),
-            button,
-    ]
-
-)
+# print(df)
 
 def feature_diff(query, cf, cols):
     return cols[~np.equal(query, cf
     )[0]].values
-
-
-import math
-
-from dash.exceptions import PreventUpdate
-import dash_bootstrap_components as dbc
-from dash import html
-import time
-
-import dash
-import dash_bootstrap_components as dbc
-import numpy as np
-import plotly.graph_objs as go
-from dash import Input, Output, dcc, html, State
 
 card_content = [
     dbc.CardHeader("Card header"),
@@ -523,8 +351,6 @@ cf_content = [
     ),
 ]
 
-
-
 row_1 = dbc.Row(
     [
         dbc.Col(dbc.Card(query_content, color="success", outline=True))
@@ -567,8 +393,6 @@ cards = html.Div([row_1, row_2, row_3])
 
 app = dash.Dash(external_stylesheets=[dbc.themes.LITERA], suppress_callback_exceptions=True)
 
-
-
 # the style arguments for the sidebar. We use position:fixed and a fixed width
 SIDEBAR_STYLE = {
     "position": "fixed",
@@ -598,9 +422,8 @@ sidebar = html.Div(
         ),
         dbc.Nav(
             [
-                dbc.NavLink("Home", href="/", active="exact"),
-                dbc.NavLink("ADULT", href="/page-1", active="exact"),
-                dbc.NavLink("CALIFORNIA", href="/page-2", active="exact"),
+                # dbc.NavLink("Home", href="/", active="exact"),
+                dbc.NavLink("ADULT", href="/", active="exact"),
             ],
             vertical=True,
             pills=True,
@@ -612,16 +435,11 @@ sidebar = html.Div(
 content = html.Div(id="page-content", style=CONTENT_STYLE)
 
 app.layout = html.Div([dcc.Location(id="url"), sidebar, content])
-server = app.server
 
 @app.callback(Output("page-content", "children"), [Input("url", "pathname")])
 def render_page_content(pathname):
     if pathname == "/":
-        return html.P("This is the home page! Describe the approach / handle as a README")
-    elif pathname == "/page-1":
         return cards
-    elif pathname == "/page-2":
-        return html.P("Oops! Nothing here yet ... ")
     # If the user tries to reach a different page, return a 404 message
     return html.Div(
         [
@@ -639,7 +457,7 @@ def render_page_content(pathname):
     prevent_initial_call=True,
 )
 def on_button_click(n):
-    print("in button click")
+    # print("in button click")
     global query, results
     query_index, query, results = choose_query(randrange(len(x_test)))
     df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == 1]["counterfactuals"].values[0])), columns=query.columns.values)
@@ -648,7 +466,7 @@ def on_button_click(n):
     if n is None:
         return dash.no_update
     else:
-        print("button clicked", n)
+        # print("button clicked", n)
         return query.to_dict('records'), df.to_dict('records')
 
 @app.callback(
@@ -667,7 +485,7 @@ def render_tab_content(data):
     cols = []
     
     if data is not None:
-        # print("data is", data)
+        # # print("data is", data)
 
         for data_plot, diff in zip(data["scatter"], data["diffs"]):
             radar_content = [
@@ -716,12 +534,12 @@ def change_page(page):
     data = df.to_dict('records')
     if page:
         df = pd.DataFrame(np.array((results[1::2].loc[results['k'] == page]["counterfactuals"].values[0])), columns=query.columns.values)
-        # print(df)
+        # # print(df)
         df["outcome"] = np.array((results[1::2].loc[results['k'] == page]["preds"].values[0]))
         data = df.to_dict('records')
         
         # gen_df = pd.DataFrame(np.array((results_gen[1::2].loc[results_gen['k'] == page]["counterfactuals"].values[0])), columns=query.columns.values)
-        # # print(df)
+        # # # print(df)
         # gen_df["outcome"] = np.array((results_gen[1::2].loc[results_gen['k'] == page]["preds"].values[0]))
         # gen_data = gen_df.to_dict('records')
         return f"k selected: {page}", data, []
@@ -744,14 +562,14 @@ def style_selected_rows(sel_rows, k):
     if len(sel_rows)==0:                                                                                                                                                                                                                      
         return dash.no_update
   
-    print(k)
-    print(sel_rows)
+    # print(k)
+    # print(sel_rows)
     selected_cf = eor_results.loc[eor_results['k'] == k]
     plots = []
     diffs = []
     for sel_row in sel_rows:
         # selected_cf['counterfactuals'].values[0][sel_row]
-        # print("selected row is", sel_row)
+        # # print("selected row is", sel_row)
 
         # selected_cf = eor_results.loc[eor_results['k'] == k]
         cf_as_array = selected_cf['counterfactuals'].values[0][sel_row]
@@ -759,7 +577,7 @@ def style_selected_rows(sel_rows, k):
         cf_as_df = pd.DataFrame(cf_as_array, columns=query.columns)
 
         diff = feature_diff(query.values, cf_as_array, query.columns)
-        # print('diffs are', diffs)
+        # # print('diffs are', diffs)
         diffs.append(diff)
 
         # calculate scores
