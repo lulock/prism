@@ -147,7 +147,7 @@ def experiment_run (model_info, numruns, query, target_range, k, actionable_feat
                   # print("cfs returns ",cf_stab)
 
 
-                  cf_stab.visualize_as_dataframe(show_only_changes=True,display_sparse_df=False)
+                  # cf_stab.visualize_as_dataframe(show_only_changes=True,display_sparse_df=False)
                   # # print(cf_stab)
                   cf_as_df =  cf_stab.cf_examples_list[0].final_cfs_df.reset_index()
                   cf_preds = cf_stab.cf_examples_list[0].final_cfs_df.values[:,-1]
